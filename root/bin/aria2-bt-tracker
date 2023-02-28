@@ -1,0 +1,42 @@
+#!/bin/sh
+
+# get trackers list
+url="https://raw.githubusercontent.com/ngosang/trackerslist/master/trackers_best.txt"
+
+wget --spider -q "${url}"
+
+if [ $? -ne 0 ]; then
+	logger -p err -t "aria2-bt-tracker" "url does not exist"
+	exit 1
+fi
+
+list="$(wget -qO- "${url}" | awk NF)"
+
+# update config file
+uci -q del aria2.main.bt_tracker
+echo "${list}" | while read line ;do uci add_list aria2.main.bt_tracker="${line}" ;done
+uci commit aria2
+
+# update running session
+if [ "$(service aria2 status)" = running ]; then
+	apilist="$(echo "${list}" | sed ':a;N;s/\n/,/g;ta')"
+	uuid="$(cat /proc/sys/kernel/random/uuid)"
+	token="$(uci -q get aria2.main.rpc_secret)"
+	json='{"jsonrpc":"2.0","id":"'${uuid}'","method":"aria2.changeGlobalOption","params":["token:'${token}'",{"bt-tracker":"'${apilist}'"}]}'
+
+	if [ "$(uci -q get aria2.main.rpc_secure)" = true ]; then
+		scheme="https"
+	else
+		scheme="http"
+	fi
+
+	httpcode="$(curl --silent --output /dev/null --write-out "%{http_code}" --insecure --header "Content-type: application/json" --data "${json}" "${scheme}://localhost:6800/jsonrpc")"
+
+	if [ ${httpcode} -ne 200 ]; then
+		reload_config
+	fi
+else
+	reload_config
+fi
+
+logger -p info -t "aria2-bt-tracker" "bittorrent trackers updated"
