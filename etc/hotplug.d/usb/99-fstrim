@@ -1,0 +1,11 @@
+#!/bin/sh
+
+if [ "${ACTION}" = "bind" -o "${ACTION}" = "add" ]; then
+	case "${PRODUCT}" in
+		174c/235c/*)
+			provisioning_mode="$(find /sys${DEVPATH} -name provisioning_mode)"
+			[ -e "${provisioning_mode}" -a "$(cat "${provisioning_mode}")" != "unmap" ] && \
+				echo "unmap" > "${provisioning_mode}"
+		;;
+	esac
+fi
